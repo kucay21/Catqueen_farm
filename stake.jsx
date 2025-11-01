@@ -1,15 +1,21 @@
 import React, { useState } from "react";
-import { getContract, prepareContractCall, sendAndConfirmTransaction } from "thirdweb";
+import { getContract, writeContract } from "thirdweb";
 import { defineChain } from "thirdweb/chains";
 import { client } from "./App";
 
 const chain = defineChain(8453);
-
 const stakingAddress = "0xef7d6880e7837D06bAa6090F8378592F3B4e174a";
 const tokenAddress = "0x586f3cb4a16c8dbf6a62b599a73eca9cd0b945fe";
 
-const staking = getContract({ client, chain, address: stakingAddress });
-const token = getContract({ client, chain, address: tokenAddress });
+const stakingAbi = [
+  {
+    inputs: [{ internalType: "uint256", name: "_amount", type: "uint256" }],
+    name: "stake",
+    outputs: [],
+    stateMutability: "payable",
+    type: "function",
+  },
+];
 
 export default function Stake() {
   const [amount, setAmount] = useState("");
@@ -17,33 +23,45 @@ export default function Stake() {
 
   async function doStake() {
     try {
-      setMsg("Processing...");
+      if (!amount || Number(amount) <= 0) {
+        setMsg("❌ Masukkan jumlah token valid");
+        return;
+      }
 
+      setMsg("Processing...");
       const parsed = BigInt(amount) * 10n ** 18n;
 
-      // APPROVE
-      const approveTx = await prepareContractCall({
+      const token = getContract({ client, chain, address: tokenAddress });
+      const staking = getContract({
+        client,
+        chain,
+        address: stakingAddress,
+        abi: stakingAbi,
+      });
+
+      // 1️⃣ Approve
+      await writeContract({
         contract: token,
         method: "approve",
         params: [stakingAddress, parsed],
+        chain,
+        client,
       });
 
-      await sendAndConfirmTransaction({ transaction: approveTx, client });
-
-      // STAKE
-      const stakeTx = await prepareContractCall({
+      // 2️⃣ Stake
+      await writeContract({
         contract: staking,
         method: "stake",
         params: [parsed],
-        value: 0n,
+        value: 0n, // 0
+        chain,
+        client,
       });
-
-      await sendAndConfirmTransaction({ transaction: stakeTx, client });
 
       setMsg("✅ Stake berhasil!");
     } catch (e) {
-      console.error(e);
-      setMsg("❌ Error staking");
+      console.error("Stake error:", e);
+      setMsg("❌ Error staking: " + e.message);
     }
   }
 
